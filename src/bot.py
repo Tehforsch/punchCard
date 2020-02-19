@@ -8,8 +8,12 @@ import logging
 import yaml
 import threading
 import time
+import datetime
+from contextlib import ExitStack
 
 from sensor import Sensor
+from game import Game, Player
+import writeInitialDatabase
 
 # Enable logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -18,9 +22,11 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 saveFolder = "save"
-dataBaseFile = Path("data/punchTimes")
+dataBaseFile = Path("../data/punchTimes")
 
 SENSOR_TIMEOUT = 0.2
+
+pinConfiguration = {1: "Toni", 2: "Peter"}
 
 def findById(objectWithId, listOfObjects, constructor):
     for obj in listOfObjects:
@@ -39,16 +45,23 @@ def getNewGroup(chat):
 def getSaveFileName(group):
     return Path(saveFolder, str(group.id))
 
-    
+def saveDatabase(data, dataBasePath):
+    with open(dataBasePath, "w") as f:
+        yaml.dump(data, f)
+
+def loadDatabase(dataBasePath):
+    with open(dataBasePath, "r") as f:
+        return yaml.safe_load(f)
+
 class Group:
     def __init__(self, chat):
         self.id = chat.id
         self.numMembers = chat.get_members_count()
         self.players = []
 
-class GuessBot:
-    def __init__(self, sensor):
-        self.sensor = sensor
+class PunchBot:
+    def __init__(self, sensors):
+        self.sensors = sensors
         self.groups = []
         self.bot = None
 
@@ -75,7 +88,6 @@ class GuessBot:
         assert update.effective_chat.type == "group"
         group = self.getGroup(update.effective_chat)
         group.save()
-        print(self.bot, "i am here!!!")
         player = group.getPlayer(update.effective_user)
         content = update.message.text
         reply = self.processGuess(group, player, content)
@@ -91,9 +103,6 @@ class GuessBot:
         with open("apiToken", "r") as f:
             return f.readlines()[0].replace("\n", "")
 
-    def loadDatabase(self):
-        with open(dataBaseFile, "r") as f:
-            self.data = yaml.safe_load(f)
 
     def writeEntry(self):
         if self.bot is None:
@@ -103,23 +112,36 @@ class GuessBot:
 
     def sensorLoop(self):
         while True:
-            self.sensor.read()
+            for sensor in self.sensors:
+                sensor.read()
             time.sleep(SENSOR_TIMEOUT)
-            if self.sensor.value == 1:
-                self.writeEntry()
+            for sensor, player in zip(self.sensors, pinConfiguration.values()):
+                if sensor.value == 1:
+                    self.punchIn(Player(player))
 
+    # def punchIn(self, bot, update):
+    #     group = self.getGroup(update.effective_chat)
+    #     player = Player(update.effective_user["first_name"])
+    #     self.game.punchIn(player, datetime.datetime.today())
+    #     saveDatabase(self.game.data, dataBaseFile)
+
+    def punchIn(self, player):
+        self.game.punchIn(player, datetime.datetime.today())
+        saveDatabase(self.game.data, dataBaseFile)
+    
     def main(self):
         token = self.readToken()
-        print(token)
         updater = Updater(token)
 
-        self.loadDatabase()
+        data = loadDatabase(dataBaseFile)
+        self.game = Game(data)
 
         dispatcher = updater.dispatcher
         dispatcher.add_error_handler(self.error)
         self.commands = [
                 ("help", self.help),
-                ("showStats", self.showStats)
+                ("showStats", self.showStats),
+                ("punchIn", self.punchIn)
                 ]
 
         for (name, command) in self.commands:
@@ -134,7 +156,7 @@ class GuessBot:
 
 
 if __name__ == '__main__':
-    with Sensor() as sensor:
-        print(sensor)
-        bot = GuessBot(sensor)
+    with ExitStack() as stack:
+        sensors = [stack.enter_context(Sensor(pin).__enter__()) for pin in pinConfiguration]
+        bot = PunchBot(sensors)
         bot.main()
