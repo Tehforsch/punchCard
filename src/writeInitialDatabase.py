@@ -19,7 +19,7 @@ timesDict = {
             }
 
 def main():
-    with open("../data/punchTimes", "w") as f:
+    with open("data/punchTimes", "w") as f:
         print("??? hello??")
         yaml.dump(timesDict, f)
 

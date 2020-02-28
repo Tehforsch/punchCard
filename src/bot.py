@@ -11,9 +11,8 @@ import time
 import datetime
 from contextlib import ExitStack
 
-from sensor import Sensor
-from game import Game, Player
-import writeInitialDatabase
+from src.sensor import Sensor
+from src.game import Game, Player
 
 # Enable logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -22,11 +21,11 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 saveFolder = "save"
-dataBaseFile = Path("../data/punchTimes")
+dataBaseFile = Path("data/punchTimes")
 
 SENSOR_TIMEOUT = 0.2
 
-pinConfiguration = {1: "Toni", 2: "Peter"}
+pinConfiguration = {3: "Toni", 5: "Peter"}
 
 def findById(objectWithId, listOfObjects, constructor):
     for obj in listOfObjects:
@@ -104,11 +103,11 @@ class PunchBot:
             return f.readlines()[0].replace("\n", "")
 
 
-    def writeEntry(self):
+    def writeEntry(self, message):
         if self.bot is None:
             return
         for group in self.groups:
-            self.bot.send_message(chat_id=group.id, text="SENSOR PRESSED")
+            self.bot.send_message(chat_id=group.id, text=message)
 
     def sensorLoop(self):
         while True:
@@ -126,7 +125,9 @@ class PunchBot:
     #     saveDatabase(self.game.data, dataBaseFile)
 
     def punchIn(self, player):
-        self.game.punchIn(player, datetime.datetime.today())
+        now = datetime.datetime.today()
+        if self.game.punchIn(player, now):
+            self.writeEntry("{} came in at {} today.".format(player.name, now.time()))
         saveDatabase(self.game.data, dataBaseFile)
     
     def main(self):
@@ -155,8 +156,11 @@ class PunchBot:
         updater.idle()
 
 
-if __name__ == '__main__':
+def setupBot():
     with ExitStack() as stack:
         sensors = [stack.enter_context(Sensor(pin).__enter__()) for pin in pinConfiguration]
         bot = PunchBot(sensors)
         bot.main()
+
+if __name__ == '__main__':
+    setupBot()

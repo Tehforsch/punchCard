@@ -18,8 +18,10 @@ class Game:
         if not player.name in self.data:
             raise PlayerNotFoundError
         
-        if not date.date() in (tempdate.date() for tempdate in self.data[player.name]):
-            self.data[player.name].append(date)
+        if date.date() in (tempdate.date() for tempdate in self.data[player.name]):
+            return False
+        self.data[player.name].append(date)
+        return True
 
 def saveDatabase(data, dataBasePath):
     with open(dataBasePath, "w") as f:
